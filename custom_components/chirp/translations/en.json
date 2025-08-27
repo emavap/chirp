@@ -51,20 +51,15 @@
         }
     },
     "entity": {
-        "button": {
-            "chirp_reload": {
-                "name": "Reload LoRaWAN devicesX"
-            }
-        },
         "sensor": {
             "chirp_devices": {
-                "name": "Number of ChirpStack devicesX"
+                "name": "Number of ChirpStack devices"
             },
             "chirp_sensors": {
-                "name": "Number of ChirpStack SensorsX"
+                "name": "Number of ChirpStack Sensors"
             },
             "chirp_updated": {
-                "name": "Last updatedX"
+                "name": "Last updated"
             }
         }
     }
