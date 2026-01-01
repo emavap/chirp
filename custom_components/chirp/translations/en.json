@@ -50,6 +50,31 @@
             }
         }
     },
+    "options": {
+        "error": {
+            "mqtt_connection_failed": "Could not connect to MQTT server, check configuration"
+        },
+        "step": {
+            "init": {
+                "data": {
+                    "mqtt_server": "MQTT server",
+                    "mqtt_port": "MQTT server port",
+                    "mqtt_user": "MQTT user name",
+                    "mqtt_password": "MQTT user password",
+                    "discovery_prefix": "HomeAssistant MQTT discovery prefix",
+                    "mqtt_chirpstack_prefix": "ChirpStack MQTT prefix",
+                    "options_start_delay": "Start delay (seconds)",
+                    "options_restore_age": "Restore age (seconds)",
+                    "options_debug_print_payload": "Debug payload logging",
+                    "options_log_level": "Log level",
+                    "options_online_per_device": "Online check interval per device (seconds, 0=disabled)",
+                    "options_add_expire_after": "Add expire_after to entities"
+                },
+                "description": "Configure Chirp integration settings. You can change MQTT connection settings and other options.",
+                "title": "Chirp Options"
+            }
+        }
+    },
     "entity": {
         "sensor": {
             "chirp_devices": {

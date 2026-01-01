@@ -37,8 +37,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     hass.data.setdefault(DOMAIN, {})
 
+    # Merge entry.data with entry.options for the configuration
+    config = {**entry.data, **entry.options}
+
     grpc_client = ChirpGrpc(entry.data, __version__)
-    mqtt_client = ChirpToHA(entry.data, __version__, None, grpc_client)
+    mqtt_client = ChirpToHA(config, __version__, None, grpc_client)
 
     hass.data[DOMAIN][entry.entry_id] = {
         GRPCLIENT: grpc_client,
@@ -50,8 +53,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # This creates each HA object for each platform your device requires.
     # It's done by calling the `async_setup_entry` function in each platform module.
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    # Register update listener to reload integration when options change
+    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
+
     _LOGGER.debug("async_setup_entry completed")
     return True
+
+
+async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload config entry when options change."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

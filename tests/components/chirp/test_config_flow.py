@@ -21,10 +21,16 @@ from homeassistant.components.chirp.const import (
     CONF_MQTT_USER,
     CONF_MQTT_CHIRPSTACK_PREFIX,
     CONF_OPTIONS_DEBUG_PAYLOAD,
+    CONF_OPTIONS_EXPIRE_AFTER,
+    CONF_OPTIONS_LOG_LEVEL,
+    CONF_OPTIONS_ONLINE_PER_DEVICE,
     CONF_OPTIONS_RESTORE_AGE,
     CONF_OPTIONS_START_DELAY,
     CONF_TENANT,
     DEFAULT_OPTIONS_DEBUG_PAYLOAD,
+    DEFAULT_OPTIONS_EXPIRE_AFTER,
+    DEFAULT_OPTIONS_LOG_LEVEL,
+    DEFAULT_OPTIONS_ONLINE_PER_DEVICE,
     DEFAULT_OPTIONS_RESTORE_AGE,
     DEFAULT_OPTIONS_START_DELAY,
     DOMAIN,
@@ -386,3 +392,156 @@ async def test_setup_with_duplicate(hass: HomeAssistant) -> None:
     )
     assert result["type"] == data_entry_flow.FlowResultType.ABORT
     assert result["reason"] == CONF_CHIRP_SERVER_RESERVED
+
+
+@mock.patch("homeassistant.components.chirp.grpc.api", new=api)
+@mock.patch("homeassistant.components.chirp.grpc.grpc", new=grpc)
+@mock.patch("homeassistant.components.chirp.mqtt.mqtt", new=mqtt)
+async def test_options_flow(hass: HomeAssistant) -> None:
+    """Test options flow."""
+    set_size(grpc=1, mqtt=1)
+
+    # Create a config entry
+    conf_data = {
+        CONF_API_SERVER: "localhost",
+        CONF_API_PORT: 8080,
+        CONF_API_KEY: common.DEF_API_KEY,
+        CONF_TENANT: "TenantName0",
+        CONF_APPLICATION: "ApplicationName0",
+        CONF_APPLICATION_ID: "ApplicationId0",
+        CONF_MQTT_SERVER: "localhost",
+        CONF_MQTT_PORT: 1883,
+        CONF_MQTT_USER: "user",
+        CONF_MQTT_PWD: "pwd",
+        CONF_MQTT_DISC: "ha",
+        CONF_MQTT_CHIRPSTACK_PREFIX: "",
+    }
+    conf_options = {
+        CONF_OPTIONS_START_DELAY: DEFAULT_OPTIONS_START_DELAY,
+        CONF_OPTIONS_RESTORE_AGE: DEFAULT_OPTIONS_RESTORE_AGE,
+        CONF_OPTIONS_DEBUG_PAYLOAD: DEFAULT_OPTIONS_DEBUG_PAYLOAD,
+        CONF_OPTIONS_LOG_LEVEL: DEFAULT_OPTIONS_LOG_LEVEL,
+        CONF_OPTIONS_ONLINE_PER_DEVICE: DEFAULT_OPTIONS_ONLINE_PER_DEVICE,
+        CONF_OPTIONS_EXPIRE_AFTER: DEFAULT_OPTIONS_EXPIRE_AFTER,
+    }
+    unique_id = generate_unique_id(conf_data)
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id=unique_id,
+        data=conf_data,
+        options=conf_options,
+    )
+
+    # Load config_entry.
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+
+    # Initialize options flow
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert result["type"] == data_entry_flow.FlowResultType.FORM
+    assert result["step_id"] == "init"
+
+    # Update options (without changing MQTT settings)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        user_input={
+            CONF_MQTT_SERVER: "localhost",
+            CONF_MQTT_PORT: 1883,
+            CONF_MQTT_USER: "user",
+            CONF_MQTT_PWD: "pwd",
+            CONF_MQTT_DISC: "ha",
+            CONF_MQTT_CHIRPSTACK_PREFIX: "",
+            CONF_OPTIONS_START_DELAY: 5,
+            CONF_OPTIONS_RESTORE_AGE: 10,
+            CONF_OPTIONS_DEBUG_PAYLOAD: True,
+            CONF_OPTIONS_LOG_LEVEL: "debug",
+            CONF_OPTIONS_ONLINE_PER_DEVICE: 60,
+            CONF_OPTIONS_EXPIRE_AFTER: True,
+        },
+    )
+    assert result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
+    assert result["data"] == {
+        CONF_OPTIONS_START_DELAY: 5,
+        CONF_OPTIONS_RESTORE_AGE: 10,
+        CONF_OPTIONS_DEBUG_PAYLOAD: True,
+        CONF_OPTIONS_LOG_LEVEL: "debug",
+        CONF_OPTIONS_ONLINE_PER_DEVICE: 60,
+        CONF_OPTIONS_EXPIRE_AFTER: True,
+    }
+
+
+@mock.patch("homeassistant.components.chirp.grpc.api", new=api)
+@mock.patch("homeassistant.components.chirp.grpc.grpc", new=grpc)
+@mock.patch("homeassistant.components.chirp.mqtt.mqtt", new=mqtt)
+async def test_options_flow_mqtt_change(hass: HomeAssistant) -> None:
+    """Test options flow with MQTT settings change."""
+    set_size(grpc=1, mqtt=1)
+
+    # Create a config entry
+    conf_data = {
+        CONF_API_SERVER: "localhost",
+        CONF_API_PORT: 8080,
+        CONF_API_KEY: common.DEF_API_KEY,
+        CONF_TENANT: "TenantName0",
+        CONF_APPLICATION: "ApplicationName0",
+        CONF_APPLICATION_ID: "ApplicationId0",
+        CONF_MQTT_SERVER: "localhost",
+        CONF_MQTT_PORT: 1883,
+        CONF_MQTT_USER: "user",
+        CONF_MQTT_PWD: "pwd",
+        CONF_MQTT_DISC: "ha",
+        CONF_MQTT_CHIRPSTACK_PREFIX: "",
+    }
+    conf_options = {
+        CONF_OPTIONS_START_DELAY: DEFAULT_OPTIONS_START_DELAY,
+        CONF_OPTIONS_RESTORE_AGE: DEFAULT_OPTIONS_RESTORE_AGE,
+        CONF_OPTIONS_DEBUG_PAYLOAD: DEFAULT_OPTIONS_DEBUG_PAYLOAD,
+        CONF_OPTIONS_LOG_LEVEL: DEFAULT_OPTIONS_LOG_LEVEL,
+        CONF_OPTIONS_ONLINE_PER_DEVICE: DEFAULT_OPTIONS_ONLINE_PER_DEVICE,
+        CONF_OPTIONS_EXPIRE_AFTER: DEFAULT_OPTIONS_EXPIRE_AFTER,
+    }
+    unique_id = generate_unique_id(conf_data)
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id=unique_id,
+        data=conf_data,
+        options=conf_options,
+    )
+
+    # Load config_entry.
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+
+    # Initialize options flow
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert result["type"] == data_entry_flow.FlowResultType.FORM
+    assert result["step_id"] == "init"
+
+    # Update options with new MQTT server
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        user_input={
+            CONF_MQTT_SERVER: "mqtt.example.com",
+            CONF_MQTT_PORT: 1884,
+            CONF_MQTT_USER: "newuser",
+            CONF_MQTT_PWD: "newpwd",
+            CONF_MQTT_DISC: "homeassistant",
+            CONF_MQTT_CHIRPSTACK_PREFIX: "chirp/",
+            CONF_OPTIONS_START_DELAY: 5,
+            CONF_OPTIONS_RESTORE_AGE: 10,
+            CONF_OPTIONS_DEBUG_PAYLOAD: True,
+            CONF_OPTIONS_LOG_LEVEL: "debug",
+            CONF_OPTIONS_ONLINE_PER_DEVICE: 60,
+            CONF_OPTIONS_EXPIRE_AFTER: True,
+        },
+    )
+    assert result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
+
+    # Verify MQTT settings were updated in entry.data
+    updated_entry = hass.config_entries.async_get_entry(entry.entry_id)
+    assert updated_entry.data[CONF_MQTT_SERVER] == "mqtt.example.com"
+    assert updated_entry.data[CONF_MQTT_PORT] == 1884
+    assert updated_entry.data[CONF_MQTT_USER] == "newuser"
+    assert updated_entry.data[CONF_MQTT_PWD] == "newpwd"
+    assert updated_entry.data[CONF_MQTT_DISC] == "homeassistant"
+    assert updated_entry.data[CONF_MQTT_CHIRPSTACK_PREFIX] == "chirp/"

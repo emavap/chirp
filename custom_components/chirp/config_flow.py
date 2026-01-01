@@ -33,6 +33,9 @@ from .const import (
     CONF_MQTT_USER,
     CONF_MQTT_CHIRPSTACK_PREFIX,
     CONF_OPTIONS_DEBUG_PAYLOAD,
+    CONF_OPTIONS_EXPIRE_AFTER,
+    CONF_OPTIONS_LOG_LEVEL,
+    CONF_OPTIONS_ONLINE_PER_DEVICE,
     CONF_OPTIONS_RESTORE_AGE,
     CONF_OPTIONS_START_DELAY,
     CONF_TENANT,
@@ -48,6 +51,9 @@ from .const import (
     DEFAULT_MQTT_USER,
     DEFAULT_NAME,
     DEFAULT_OPTIONS_DEBUG_PAYLOAD,
+    DEFAULT_OPTIONS_EXPIRE_AFTER,
+    DEFAULT_OPTIONS_LOG_LEVEL,
+    DEFAULT_OPTIONS_ONLINE_PER_DEVICE,
     DEFAULT_OPTIONS_RESTORE_AGE,
     DEFAULT_OPTIONS_START_DELAY,
     DEFAULT_TENANT,
@@ -263,6 +269,9 @@ class ChirpConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         CONF_OPTIONS_START_DELAY: DEFAULT_OPTIONS_START_DELAY,
                         CONF_OPTIONS_RESTORE_AGE: DEFAULT_OPTIONS_RESTORE_AGE,
                         CONF_OPTIONS_DEBUG_PAYLOAD: DEFAULT_OPTIONS_DEBUG_PAYLOAD,
+                        CONF_OPTIONS_LOG_LEVEL: DEFAULT_OPTIONS_LOG_LEVEL,
+                        CONF_OPTIONS_ONLINE_PER_DEVICE: DEFAULT_OPTIONS_ONLINE_PER_DEVICE,
+                        CONF_OPTIONS_EXPIRE_AFTER: DEFAULT_OPTIONS_EXPIRE_AFTER,
                     },
                 )
 
@@ -321,6 +330,171 @@ class ChirpConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
         return chirp_configuration
+
+    @staticmethod
+    @core.callback
+    def async_get_options_flow(config_entry: config_entries.ConfigEntry):
+        """Get the options flow for this handler."""
+        return ChirpOptionsFlow(config_entry)
+
+
+class ChirpOptionsFlow(config_entries.OptionsFlow):
+    """Handle options flow for Chirp integration."""
+
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+        """Initialize options flow."""
+        self.config_entry = config_entry
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] = None
+    ) -> FlowResult:
+        """Manage the options."""
+        errors = {}
+
+        if user_input is not None:
+            # Check if MQTT settings have changed
+            mqtt_changed = (
+                user_input.get(CONF_MQTT_SERVER) != self.config_entry.data.get(CONF_MQTT_SERVER)
+                or user_input.get(CONF_MQTT_PORT) != self.config_entry.data.get(CONF_MQTT_PORT)
+                or user_input.get(CONF_MQTT_USER) != self.config_entry.data.get(CONF_MQTT_USER)
+                or user_input.get(CONF_MQTT_PWD) != self.config_entry.data.get(CONF_MQTT_PWD)
+                or user_input.get(CONF_MQTT_DISC) != self.config_entry.data.get(CONF_MQTT_DISC)
+                or user_input.get(CONF_MQTT_CHIRPSTACK_PREFIX) != self.config_entry.data.get(CONF_MQTT_CHIRPSTACK_PREFIX)
+            )
+
+            # If MQTT settings changed, validate the connection
+            if mqtt_changed:
+                try:
+                    # Create a test configuration with new MQTT settings
+                    test_config = {**self.config_entry.data}
+                    test_config[CONF_MQTT_SERVER] = user_input[CONF_MQTT_SERVER]
+                    test_config[CONF_MQTT_PORT] = user_input[CONF_MQTT_PORT]
+                    test_config[CONF_MQTT_USER] = user_input[CONF_MQTT_USER]
+                    test_config[CONF_MQTT_PWD] = user_input[CONF_MQTT_PWD]
+                    test_config[CONF_MQTT_DISC] = user_input[CONF_MQTT_DISC]
+                    test_config[CONF_MQTT_CHIRPSTACK_PREFIX] = user_input[CONF_MQTT_CHIRPSTACK_PREFIX]
+
+                    # Test MQTT connection
+                    entry = lambda: None
+                    entry.data = test_config
+                    entry.options = {}
+                    entry.unique_id = self.config_entry.unique_id
+
+                    # Create a temporary grpc client for validation
+                    grpc_channel = ChirpGrpc(self.config_entry.data, None)
+                    mqtt_client = ChirpToHA(test_config, None, None, grpc_channel, connectivity_check_only=True)
+                    mqtt_client.close()
+                    grpc_channel.close()
+
+                    # Update entry.data with new MQTT settings
+                    new_data = {**self.config_entry.data}
+                    new_data[CONF_MQTT_SERVER] = user_input[CONF_MQTT_SERVER]
+                    new_data[CONF_MQTT_PORT] = user_input[CONF_MQTT_PORT]
+                    new_data[CONF_MQTT_USER] = user_input[CONF_MQTT_USER]
+                    new_data[CONF_MQTT_PWD] = user_input[CONF_MQTT_PWD]
+                    new_data[CONF_MQTT_DISC] = user_input[CONF_MQTT_DISC]
+                    new_data[CONF_MQTT_CHIRPSTACK_PREFIX] = user_input[CONF_MQTT_CHIRPSTACK_PREFIX]
+
+                    self.hass.config_entries.async_update_entry(
+                        self.config_entry,
+                        data=new_data,
+                    )
+
+                except Exception as error:  # pylint: disable=broad-exception-caught
+                    _LOGGER.error(
+                        "Connection to MQTT server (%s:%s) failed with %s",
+                        user_input[CONF_MQTT_SERVER],
+                        user_input[CONF_MQTT_PORT],
+                        str(error),
+                    )
+                    errors[CONF_MQTT_SERVER] = CONF_ERROR_MQTT_CONN_FAILED
+
+            if not errors:
+                # Remove MQTT settings from user_input before saving to options
+                # (they're already in entry.data)
+                options_data = {
+                    CONF_OPTIONS_START_DELAY: user_input[CONF_OPTIONS_START_DELAY],
+                    CONF_OPTIONS_RESTORE_AGE: user_input[CONF_OPTIONS_RESTORE_AGE],
+                    CONF_OPTIONS_DEBUG_PAYLOAD: user_input[CONF_OPTIONS_DEBUG_PAYLOAD],
+                    CONF_OPTIONS_LOG_LEVEL: user_input[CONF_OPTIONS_LOG_LEVEL],
+                    CONF_OPTIONS_ONLINE_PER_DEVICE: user_input[CONF_OPTIONS_ONLINE_PER_DEVICE],
+                    CONF_OPTIONS_EXPIRE_AFTER: user_input[CONF_OPTIONS_EXPIRE_AFTER],
+                }
+                return self.async_create_entry(title="", data=options_data)
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_MQTT_SERVER,
+                        default=self.config_entry.data.get(CONF_MQTT_SERVER, DEFAULT_MQTT_SERVER),
+                    ): vol.All(str, vol.Length(min=3)),
+                    vol.Required(
+                        CONF_MQTT_PORT,
+                        default=self.config_entry.data.get(CONF_MQTT_PORT, DEFAULT_MQTT_PORT),
+                    ): vol.All(int, vol.Range(min=0, max=0xffff)),
+                    vol.Required(
+                        CONF_MQTT_USER,
+                        default=self.config_entry.data.get(CONF_MQTT_USER, DEFAULT_MQTT_USER),
+                    ): vol.All(str, vol.Length(min=1)),
+                    vol.Required(
+                        CONF_MQTT_PWD,
+                        default=self.config_entry.data.get(CONF_MQTT_PWD, DEFAULT_MQTT_PWD),
+                    ): str,
+                    vol.Required(
+                        CONF_MQTT_DISC,
+                        default=self.config_entry.data.get(CONF_MQTT_DISC, DEFAULT_MQTT_DISC),
+                    ): vol.All(str, vol.Length(min=1)),
+                    vol.Optional(
+                        CONF_MQTT_CHIRPSTACK_PREFIX,
+                        default=self.config_entry.data.get(CONF_MQTT_CHIRPSTACK_PREFIX, DEFAULT_MQTT_CHIRPSTACK_PREFIX),
+                    ): str,
+                    vol.Required(
+                        CONF_OPTIONS_START_DELAY,
+                        default=self.config_entry.options.get(
+                            CONF_OPTIONS_START_DELAY, DEFAULT_OPTIONS_START_DELAY
+                        ),
+                    ): vol.All(int, vol.Range(min=0, max=60)),
+                    vol.Required(
+                        CONF_OPTIONS_RESTORE_AGE,
+                        default=self.config_entry.options.get(
+                            CONF_OPTIONS_RESTORE_AGE, DEFAULT_OPTIONS_RESTORE_AGE
+                        ),
+                    ): vol.All(int, vol.Range(min=0, max=60)),
+                    vol.Required(
+                        CONF_OPTIONS_DEBUG_PAYLOAD,
+                        default=self.config_entry.options.get(
+                            CONF_OPTIONS_DEBUG_PAYLOAD, DEFAULT_OPTIONS_DEBUG_PAYLOAD
+                        ),
+                    ): bool,
+                    vol.Required(
+                        CONF_OPTIONS_LOG_LEVEL,
+                        default=self.config_entry.options.get(
+                            CONF_OPTIONS_LOG_LEVEL, DEFAULT_OPTIONS_LOG_LEVEL
+                        ),
+                    ): SelectSelector(
+                        SelectSelectorConfig(
+                            options=["debug", "info", "warning", "error"],
+                            mode=SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
+                    vol.Required(
+                        CONF_OPTIONS_ONLINE_PER_DEVICE,
+                        default=self.config_entry.options.get(
+                            CONF_OPTIONS_ONLINE_PER_DEVICE, DEFAULT_OPTIONS_ONLINE_PER_DEVICE
+                        ),
+                    ): vol.All(int, vol.Range(min=0, max=3600)),
+                    vol.Required(
+                        CONF_OPTIONS_EXPIRE_AFTER,
+                        default=self.config_entry.options.get(
+                            CONF_OPTIONS_EXPIRE_AFTER, DEFAULT_OPTIONS_EXPIRE_AFTER
+                        ),
+                    ): bool,
+                }
+            ),
+            errors=errors,
+        )
 
 
 class AlreadyConfigured(exceptions.HomeAssistantError):
