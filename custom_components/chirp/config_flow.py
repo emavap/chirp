@@ -375,17 +375,14 @@ class ChirpOptionsFlow(config_entries.OptionsFlow):
                     test_config[CONF_MQTT_DISC] = user_input[CONF_MQTT_DISC]
                     test_config[CONF_MQTT_CHIRPSTACK_PREFIX] = user_input[CONF_MQTT_CHIRPSTACK_PREFIX]
 
-                    # Test MQTT connection
-                    entry = lambda: None
-                    entry.data = test_config
-                    entry.options = {}
-                    entry.unique_id = self.config_entry.unique_id
+                    # Test MQTT connection in executor to avoid blocking
+                    def test_mqtt_connection():
+                        grpc_channel = ChirpGrpc(self.config_entry.data, None)
+                        mqtt_client = ChirpToHA(test_config, None, None, grpc_channel, connectivity_check_only=True)
+                        mqtt_client.close()
+                        grpc_channel.close()
 
-                    # Create a temporary grpc client for validation
-                    grpc_channel = ChirpGrpc(self.config_entry.data, None)
-                    mqtt_client = ChirpToHA(test_config, None, None, grpc_channel, connectivity_check_only=True)
-                    mqtt_client.close()
-                    grpc_channel.close()
+                    await self.hass.async_add_executor_job(test_mqtt_connection)
 
                     # Update entry.data with new MQTT settings
                     new_data = {**self.config_entry.data}
@@ -434,7 +431,7 @@ class ChirpOptionsFlow(config_entries.OptionsFlow):
                     vol.Required(
                         CONF_MQTT_PORT,
                         default=self.config_entry.data.get(CONF_MQTT_PORT, DEFAULT_MQTT_PORT),
-                    ): vol.All(int, vol.Range(min=0, max=0xffff)),
+                    ): vol.All(vol.Coerce(int), vol.Range(min=0, max=0xffff)),
                     vol.Required(
                         CONF_MQTT_USER,
                         default=self.config_entry.data.get(CONF_MQTT_USER, DEFAULT_MQTT_USER),
@@ -456,13 +453,13 @@ class ChirpOptionsFlow(config_entries.OptionsFlow):
                         default=self.config_entry.options.get(
                             CONF_OPTIONS_START_DELAY, DEFAULT_OPTIONS_START_DELAY
                         ),
-                    ): vol.All(int, vol.Range(min=0, max=60)),
+                    ): vol.All(vol.Coerce(int), vol.Range(min=0, max=60)),
                     vol.Required(
                         CONF_OPTIONS_RESTORE_AGE,
                         default=self.config_entry.options.get(
                             CONF_OPTIONS_RESTORE_AGE, DEFAULT_OPTIONS_RESTORE_AGE
                         ),
-                    ): vol.All(int, vol.Range(min=0, max=60)),
+                    ): vol.All(vol.Coerce(int), vol.Range(min=0, max=60)),
                     vol.Required(
                         CONF_OPTIONS_DEBUG_PAYLOAD,
                         default=self.config_entry.options.get(
@@ -485,7 +482,7 @@ class ChirpOptionsFlow(config_entries.OptionsFlow):
                         default=self.config_entry.options.get(
                             CONF_OPTIONS_ONLINE_PER_DEVICE, DEFAULT_OPTIONS_ONLINE_PER_DEVICE
                         ),
-                    ): vol.All(int, vol.Range(min=0, max=3600)),
+                    ): vol.All(vol.Coerce(int), vol.Range(min=0, max=3600)),
                     vol.Required(
                         CONF_OPTIONS_EXPIRE_AFTER,
                         default=self.config_entry.options.get(
