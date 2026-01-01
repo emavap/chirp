@@ -7,8 +7,10 @@ from typing import Any
 
 import voluptuous as vol
 
-from homeassistant import config_entries, core, data_entry_flow, exceptions
+from homeassistant import config_entries, data_entry_flow, exceptions
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.selector import (
     SelectSelector,
     SelectSelectorConfig,
@@ -100,7 +102,6 @@ class ChirpConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     def __init__(self) -> None:
         """Set initial values for ChirpConfigFlow."""
-        self._hass: core.HomeAssistant = core.async_get_hass()
         _LOGGER.debug("ChirpConfigFlow.__init__")
 
     def __del__(self):
@@ -332,7 +333,7 @@ class ChirpConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return chirp_configuration
 
     @staticmethod
-    @core.callback
+    @callback
     def async_get_options_flow(config_entry: config_entries.ConfigEntry):
         """Get the options flow for this handler."""
         return ChirpOptionsFlow(config_entry)
