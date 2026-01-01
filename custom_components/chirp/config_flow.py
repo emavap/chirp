@@ -357,6 +357,13 @@ class ChirpOptionsFlow(config_entries.OptionsFlow):
         errors = {}
 
         if user_input is not None:
+            # Check if ChirpStack API settings have changed
+            api_changed = (
+                user_input.get(CONF_API_SERVER) != self.config_entry.data.get(CONF_API_SERVER)
+                or user_input.get(CONF_API_PORT) != self.config_entry.data.get(CONF_API_PORT)
+                or user_input.get(CONF_API_KEY) != self.config_entry.data.get(CONF_API_KEY)
+            )
+
             # Check if MQTT settings have changed
             mqtt_changed = (
                 user_input.get(CONF_MQTT_SERVER) != self.config_entry.data.get(CONF_MQTT_SERVER)
@@ -367,11 +374,43 @@ class ChirpOptionsFlow(config_entries.OptionsFlow):
                 or user_input.get(CONF_MQTT_CHIRPSTACK_PREFIX) != self.config_entry.data.get(CONF_MQTT_CHIRPSTACK_PREFIX)
             )
 
+            new_data = {**self.config_entry.data}
+
+            # If ChirpStack API settings changed, validate the connection
+            if api_changed:
+                try:
+                    # Create a test configuration with new API settings
+                    test_api_config = {**self.config_entry.data}
+                    test_api_config[CONF_API_SERVER] = user_input[CONF_API_SERVER]
+                    test_api_config[CONF_API_PORT] = user_input[CONF_API_PORT]
+                    test_api_config[CONF_API_KEY] = user_input[CONF_API_KEY]
+
+                    # Test ChirpStack API connection in executor to avoid blocking
+                    def test_api_connection():
+                        grpc_channel = ChirpGrpc(test_api_config, None)
+                        grpc_channel.close()
+
+                    await self.hass.async_add_executor_job(test_api_connection)
+
+                    # Update new_data with API settings
+                    new_data[CONF_API_SERVER] = user_input[CONF_API_SERVER]
+                    new_data[CONF_API_PORT] = user_input[CONF_API_PORT]
+                    new_data[CONF_API_KEY] = user_input[CONF_API_KEY]
+
+                except Exception as error:  # pylint: disable=broad-exception-caught
+                    _LOGGER.error(
+                        "Connection to ChirpStack API server (%s:%s) failed with %s",
+                        user_input[CONF_API_SERVER],
+                        user_input[CONF_API_PORT],
+                        str(error),
+                    )
+                    errors[CONF_API_SERVER] = CONF_ERROR_CHIRP_CONN_FAILED
+
             # If MQTT settings changed, validate the connection
-            if mqtt_changed:
+            if mqtt_changed and not errors:
                 try:
                     # Create a test configuration with new MQTT settings
-                    test_config = {**self.config_entry.data}
+                    test_config = {**new_data}
                     test_config[CONF_MQTT_SERVER] = user_input[CONF_MQTT_SERVER]
                     test_config[CONF_MQTT_PORT] = user_input[CONF_MQTT_PORT]
                     test_config[CONF_MQTT_USER] = user_input[CONF_MQTT_USER]
@@ -381,26 +420,20 @@ class ChirpOptionsFlow(config_entries.OptionsFlow):
 
                     # Test MQTT connection in executor to avoid blocking
                     def test_mqtt_connection():
-                        grpc_channel = ChirpGrpc(self.config_entry.data, None)
+                        grpc_channel = ChirpGrpc(new_data, None)
                         mqtt_client = ChirpToHA(test_config, None, None, grpc_channel, connectivity_check_only=True)
                         mqtt_client.close()
                         grpc_channel.close()
 
                     await self.hass.async_add_executor_job(test_mqtt_connection)
 
-                    # Update entry.data with new MQTT settings
-                    new_data = {**self.config_entry.data}
+                    # Update new_data with MQTT settings
                     new_data[CONF_MQTT_SERVER] = user_input[CONF_MQTT_SERVER]
                     new_data[CONF_MQTT_PORT] = user_input[CONF_MQTT_PORT]
                     new_data[CONF_MQTT_USER] = user_input[CONF_MQTT_USER]
                     new_data[CONF_MQTT_PWD] = user_input[CONF_MQTT_PWD]
                     new_data[CONF_MQTT_DISC] = user_input[CONF_MQTT_DISC]
                     new_data[CONF_MQTT_CHIRPSTACK_PREFIX] = user_input[CONF_MQTT_CHIRPSTACK_PREFIX]
-
-                    self.hass.config_entries.async_update_entry(
-                        self.config_entry,
-                        data=new_data,
-                    )
 
                 except Exception as error:  # pylint: disable=broad-exception-caught
                     _LOGGER.error(
@@ -412,6 +445,12 @@ class ChirpOptionsFlow(config_entries.OptionsFlow):
                     errors[CONF_MQTT_SERVER] = CONF_ERROR_MQTT_CONN_FAILED
 
             if not errors:
+                # Update entry.data if any connection settings changed
+                if api_changed or mqtt_changed:
+                    self.hass.config_entries.async_update_entry(
+                        self.config_entry,
+                        data=new_data,
+                    )
                 # Remove MQTT settings from user_input before saving to options
                 # (they're already in entry.data)
                 options_data = {
@@ -428,6 +467,20 @@ class ChirpOptionsFlow(config_entries.OptionsFlow):
             step_id="init",
             data_schema=vol.Schema(
                 {
+                    # ChirpStack API Settings
+                    vol.Required(
+                        CONF_API_SERVER,
+                        default=self.config_entry.data.get(CONF_API_SERVER, DEFAULT_API_SERVER),
+                    ): vol.All(str, vol.Length(min=3)),
+                    vol.Required(
+                        CONF_API_PORT,
+                        default=self.config_entry.data.get(CONF_API_PORT, DEFAULT_API_PORT),
+                    ): vol.All(vol.Coerce(int), vol.Range(min=0, max=0xffff)),
+                    vol.Required(
+                        CONF_API_KEY,
+                        default=self.config_entry.data.get(CONF_API_KEY, DEFAULT_API_KEY),
+                    ): str,
+                    # MQTT Settings
                     vol.Required(
                         CONF_MQTT_SERVER,
                         default=self.config_entry.data.get(CONF_MQTT_SERVER, DEFAULT_MQTT_SERVER),

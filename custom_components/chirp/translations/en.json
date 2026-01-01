@@ -52,11 +52,15 @@
     },
     "options": {
         "error": {
+            "chirpstack_connection_failed": "Could not connect to ChirpStack API server, check configuration",
             "mqtt_connection_failed": "Could not connect to MQTT server, check configuration"
         },
         "step": {
             "init": {
                 "data": {
+                    "chirpstack_api_server": "ChirpStack API server",
+                    "server_port": "ChirpStack API port",
+                    "api_connection_key": "ChirpStack API token",
                     "mqtt_server": "MQTT server",
                     "mqtt_port": "MQTT server port",
                     "mqtt_user": "MQTT user name",
@@ -70,7 +74,7 @@
                     "options_online_per_device": "Online check interval per device (seconds, 0=disabled)",
                     "options_add_expire_after": "Add expire_after to entities"
                 },
-                "description": "Configure Chirp integration settings. You can change MQTT connection settings and other options.",
+                "description": "Configure Chirp integration settings. You can change ChirpStack API, MQTT connection settings and other options.",
                 "title": "Chirp Options"
             }
         }
